@@ -39,12 +39,6 @@ on:
         default: "common-android14-6.1-2025-09"
         type: string
 
-      susfs_branch:
-        description: "SUSFS Branch (Use default for P6-P9; use gki-android15-6.6-dev for P10 series)"
-        required: false
-        default: "gki-android14-6.1-dev"
-        type: string
-
       build_wg:
         description: "Build with custom Kconfig integration? (default=Wireguard)"
         required: false
@@ -141,7 +135,25 @@ jobs:
           sed -i '/config KSU_DEBUG/,/help/{s/default n/default y/}' "$KSU_KCONFIG"
           echo ">>> KPM successfully set to default y."
 
-
+      - name: Calculate Dynamic SuSFS Branch
+        run: |
+          # Grabs the manifest branch from your workflow inputs/env
+          MANIFEST="${{ env.MANIFEST_BRANCH }}" 
+          
+          if [[ -n "$MANIFEST" ]]; then
+              echo ">>> Calculating SuSFS branch from manifest branch: $MANIFEST..."
+              
+              # sed extracts 'androidXX-Y.Z', drops everything else, and formats the new string
+              SUSFS_BRANCH=$(echo "$MANIFEST" | sed -E 's/common-(android[0-9]+-[0-9]+\.[0-9]+).*/gki-\1-dev/')
+              
+              # Export to GITHUB_ENV so all future steps/scripts can read it
+              echo "SUSFS_BRANCH=${SUSFS_BRANCH}" >> $GITHUB_ENV
+              echo ">>> Target SuSFS Branch set to: ${SUSFS_BRANCH}"
+          else
+              echo "[-] Warning: MANIFEST_BRANCH not found. Falling back to default."
+              echo "SUSFS_BRANCH=gki-android14-6.1-dev" >> $GITHUB_ENV
+          fi
+          
       - name: Integrate SUSFS common-side
         if: inputs.enable_ksu_susfs == true
         env:

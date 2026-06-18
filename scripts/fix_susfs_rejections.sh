@@ -47,11 +47,37 @@ if [ -f "common/fs/proc/base.c.rej" ]; then
 fi
 
 
-# 3. Force Log Output for fs/namespace.c Rejections
+# 3. Fix fs/namespace.c
 if [ -f "common/fs/namespace.c.rej" ]; then
-  echo "[-] CRITICAL ROOT CAUSE FOUND: Printing namespace.c.rej contents..." >&2
-  cat "common/fs/namespace.c.rej" >&2
-  exit 1
+  echo ">>> Found namespace.c.rej. Applying precise manual fix..."
+  
+  # Inject headers right before #include "pnode.h"
+  sed -i '/#include "pnode.h"/i\
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\
+#include <linux/susfs_def.h>\
+#endif \/\/ #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\
+' common/fs/namespace.c
+
+  # Inject externs and macros right after #include "internal.h"
+  sed -i '/#include "internal.h"/a\
+\
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\
+extern bool susfs_is_current_ksu_domain(void);\
+extern struct static_key_true susfs_is_sdcard_android_data_not_decrypted;\
+\
+#define CL_COPY_MNT_NS BIT(25) \/* used by copy_mnt_ns() *\/\
+\
+#endif \/\/ #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\
+' common/fs/namespace.c
+
+  # Sanity Check: Verify the injection
+  if grep -q 'susfs_is_sdcard_android_data_not_decrypted' common/fs/namespace.c; then
+    echo "  -> namespace.c fix verified!"
+    rm "common/fs/namespace.c.rej"
+  else
+    echo "  [-] CRITICAL: namespace.c fix failed to inject!" >&2
+    exit 1
+  fi
 fi
 
 # 4. Fix fs/proc/task_mmu.c

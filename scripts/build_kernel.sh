@@ -12,17 +12,35 @@ echo ">>> Marking repo as clean (sanitizes all custom configuration & source mod
 # Dynamically safeguards all modifications 
 git -C common ls-files -m | xargs -r git -C common update-index --assume-unchanged
 
+# DYNAMIC KERNELSU VERSION CALCULATION (Outside Sandbox)
+KSU_DIR="common/drivers/kernelsu"
+if [ -d "$KSU_DIR" ]; then
+    # Use the exported UPSTREAM_HASH to maintain CI symmetry, fallback to HEAD if undefined
+    TARGET_HASH="${UPSTREAM_HASH:-HEAD}"
+    
+    CALCULATED_COUNT=$(git -C "$KSU_DIR" rev-list --count "$TARGET_HASH" 2>/dev/null || echo "11950")
+    CALCULATED_TAG=$(git -C "$KSU_DIR" describe --tags --abbrev=0 "$TARGET_HASH" 2>/dev/null || echo "v3.2.0")
+    
+    echo ">>> Pre-calculated KSU_GIT_VERSION: $CALCULATED_COUNT (from $TARGET_HASH)"
+    echo ">>> Pre-calculated KSU_GIT_TAG: $CALCULATED_TAG (from $TARGET_HASH)"
+    
+    # Bundle into Make's supreme override variable
+    INJECTED_MAKEFLAGS="KSU_GIT_VERSION_VALID=1 KSU_GIT_VERSION=$CALCULATED_COUNT KSU_GIT_TAG=$CALCULATED_TAG"
+else
+    INJECTED_MAKEFLAGS=""
+
 # Build method 
 if [ -f "tools/bazel" ]; then
     echo ">>> Modern Kleaf/Bazel ecosystem detected..."
     
-    # Enforce standard sandboxing to ensure cross-version compatibility 
+    # Enforce standard sandboxing and inject MAKEFLAGS dynamically
     tools/bazel run --config=stamp \
       --action_env=SOURCE_DATE_EPOCH="$OFFICIAL_DATE" \
       --action_env=STABLE_BUILD_VERSION="-g$OFFICIAL_HASH" \
       --action_env=KLEAF_KERNEL_BUILD_VERSION="-g$OFFICIAL_HASH" \
       --action_env=KLEAF_SKIP_ABI_CHECKS=true \
       --action_env=KLEAF_USER=android-build \
+      --action_env=MAKEFLAGS="$INJECTED_MAKEFLAGS" \
       //common:kernel_aarch64_dist \
       -- \
       --destdir=out/dist
@@ -42,8 +60,9 @@ else
 
     export DIST_DIR="out/dist"
     
-    # Inject official hash
+    # Inject official hash and Make overrides
     export EXTRA_LINUX_VERSION="-g${OFFICIAL_HASH}"
+    export MAKEFLAGS="$INJECTED_MAKEFLAGS"
     
     # 2. Run the legacy orchestration script
     if [ -f "build/build.sh" ]; then

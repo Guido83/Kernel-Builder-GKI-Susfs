@@ -53,25 +53,24 @@ if [ -f "$TARGET_KBUILD" ]; then
     CALCULATED_COUNT=$(git -C "${MANAGER_DIR}" rev-list --count "${UPSTREAM_HASH}" 2>/dev/null || echo "11950")
     CALCULATED_TAG=$(git -C "${MANAGER_DIR}" describe --tags --abbrev=0 "${UPSTREAM_HASH}" 2>/dev/null || echo "v3.2.0")
     
-    # Prepend GNU Make immutable overrides to the very top of Kbuild.
-    # This natively forces Make to ignore all $(shell git...) commands downstream.
+    # Prepend GNU Make immutable overrides
     {
+        # --- Official & Next Namespaces ---
         echo "override KSU_GIT_VERSION_VALID := 1"
         echo "override KSU_GIT_VERSION := ${CALCULATED_COUNT}"
         echo "override KSU_GIT_TAG := ${CALCULATED_TAG}"
-        echo "override KSU_TAG_NAME := ${CALCULATED_TAG}"
         echo "override KSU_COMMIT_SHA := ${SHORT_HASH}"
-        echo "override KSU_BRANCH := ${UPSTREAM_BRANCH}"
         echo "override KSU_GIT_BRANCH := ${UPSTREAM_BRANCH}"
         
-        # --- ReSukiSU Specific Overrides ---
+        # --- ReSukiSU & Ultra Namespaces ---
         echo "override KSU_LOCAL_VERSION := ${CALCULATED_COUNT}"
-        echo "override KSU_VERSION := $((30700 + CALCULATED_COUNT))"
+        echo "override KSU_TAG_NAME := ${CALCULATED_TAG}"
         echo "override KSU_BRANCH_NAME := ${UPSTREAM_BRANCH}"
+        echo "override KSU_BRANCH := ${UPSTREAM_BRANCH}"
         
         cat "$TARGET_KBUILD"
     } > "${TARGET_KBUILD}.tmp" && mv "${TARGET_KBUILD}.tmp" "$TARGET_KBUILD"
-    
+
     echo "  -> Prepend Immutable Gatekeeper: TRUE"
     echo "  -> Prepend Immutable Count: ${CALCULATED_COUNT}"
     echo "  -> Prepend Immutable Tag: ${CALCULATED_TAG}"

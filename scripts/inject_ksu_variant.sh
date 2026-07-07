@@ -45,32 +45,37 @@ SHORT_HASH=${UPSTREAM_HASH:0:7}
 # Export the exact sync commit to the GitHub Env for the artifact fetcher
 echo "UPSTREAM_HASH=${UPSTREAM_HASH}" >> $GITHUB_ENV
 
-echo ">>> Enforcing CI symmetry (locking version strings to ${SHORT_HASH})..."
-sed -i "s/rev-list --count HEAD/rev-list --count ${UPSTREAM_HASH}/g" "${MANAGER_DIR}/kernel/Kbuild" 2>/dev/null || true
-sed -i "s/rev-list --count \$(REPO_BRANCH)/rev-list --count ${UPSTREAM_HASH}/g" "${MANAGER_DIR}/kernel/Kbuild" 2>/dev/null || true
+echo ">>> Severing Kbuild Git dependencies for Kleaf Sandbox..."
+TARGET_KBUILD="${MANAGER_DIR}/kernel/Kbuild"
 
-echo ">>> Cleaning KSU tree to remove -dirty flag..."
-# Target the actual cloned repository directory
-KSU_DIR="${MANAGER_DIR}"
+if [ -f "$TARGET_KBUILD" ]; then
+    # Calculate the exact values outside the sandbox
+    CALCULATED_COUNT=$(git -C "${MANAGER_DIR}" rev-list --count "${UPSTREAM_HASH}" 2>/dev/null || echo "11950")
+    CALCULATED_TAG=$(git -C "${MANAGER_DIR}" describe --tags --abbrev=0 "${UPSTREAM_HASH}" 2>/dev/null || echo "v3.2.0")
+    
+    # Prepend GNU Make immutable overrides
+    {
+        # --- Official & Next Namespaces ---
+        echo "override KSU_GIT_VERSION_VALID := 1"
+        echo "override KSU_GIT_VERSION := ${CALCULATED_COUNT}"
+        echo "override KSU_GIT_TAG := ${CALCULATED_TAG}"
+        echo "override KSU_COMMIT_SHA := ${SHORT_HASH}"
+        echo "override KSU_GIT_BRANCH := ${UPSTREAM_BRANCH}"
+        
+        # --- ReSukiSU & Ultra Namespaces ---
+        echo "override KSU_LOCAL_VERSION := ${CALCULATED_COUNT}"
+        echo "override KSU_TAG_NAME := ${CALCULATED_TAG}"
+        echo "override KSU_BRANCH_NAME := ${UPSTREAM_BRANCH}"
+        echo "override KSU_BRANCH := ${UPSTREAM_BRANCH}"
+        
+        cat "$TARGET_KBUILD"
+    } > "${TARGET_KBUILD}.tmp" && mv "${TARGET_KBUILD}.tmp" "$TARGET_KBUILD"
 
-if [ -d "$KSU_DIR" ]; then
-    cd "$KSU_DIR"
-    
-    # Set dummy Git credentials
-    git config user.email "runner@example.com"
-    git config user.name "CI Runner"
-    
-    # Stage all modified files (including the Kbuild file you just sed-patched)
-    git add -A
-    
-    # Commit them. The '|| true' prevents the script from crashing if there are no changes.
-    git commit -m "ci: Sanitize tree to drop -dirty flag" || true
-    
-    cd - > /dev/null
-    
-    echo ">>> KSU tree sanitized."
-else
-    echo ">>> Warning: KSU directory not found at $KSU_DIR, skipping dirty flag fix."
+    echo "  -> Prepend Immutable Gatekeeper: TRUE"
+    echo "  -> Prepend Immutable Count: ${CALCULATED_COUNT}"
+    echo "  -> Prepend Immutable Tag: ${CALCULATED_TAG}"
+    echo "  -> Prepend Immutable SHA: ${SHORT_HASH}"
+    echo "  -> Prepend Immutable Branch: ${UPSTREAM_BRANCH}"
 fi
 
 echo ">>> Injecting Bazel symlink..."

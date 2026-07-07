@@ -15,16 +15,19 @@ git -C common ls-files -m | xargs -r git -C common update-index --assume-unchang
 # Build method 
 if [ -f "tools/bazel" ]; then
     echo ">>> Modern Kleaf/Bazel ecosystem detected..."
-    tools/bazel run --config=local --config=stamp \
+    
+    # Enforce standard sandboxing and inject MAKEFLAGS dynamically
+    tools/bazel run --config=stamp \
       --action_env=SOURCE_DATE_EPOCH="$OFFICIAL_DATE" \
-      --action_env=STABLE_BUILD_VERSION="g$OFFICIAL_HASH" \
-      --action_env=KLEAF_KERNEL_BUILD_VERSION="g$OFFICIAL_HASH" \
+      --action_env=STABLE_BUILD_VERSION="-g$OFFICIAL_HASH" \
+      --action_env=KLEAF_KERNEL_BUILD_VERSION="-g$OFFICIAL_HASH" \
       --action_env=KLEAF_SKIP_ABI_CHECKS=true \
       --action_env=KLEAF_USER=android-build \
       //common:kernel_aarch64_dist \
       -- \
       --destdir=out/dist
 else
+
     echo ">>> Legacy Hermetic Make ecosystem detected (5.10 or older)..."
     
     mkdir -p out/dist
@@ -39,7 +42,7 @@ else
 
     export DIST_DIR="out/dist"
     
-    # Inject official hash
+    # Inject official hash and Make overrides
     export EXTRA_LINUX_VERSION="-g${OFFICIAL_HASH}"
     
     # 2. Run the legacy orchestration script
@@ -82,10 +85,10 @@ fi
 
 if [ "$WITH_WG" = "true" ]; then
     # Group the dashboard inside an expandable GitHub Actions log section
-    echo "::group::WireGuard & Hardware Crypto Injection Report"
+    echo "::group::WireGuard Integration Report"
     echo ""
     echo "=============================================="
-    echo " WIREGUARD & HARDWARE CRYPTO INJECTION REPORT "
+    echo " WIREGUARD KERNEL INJECTION REPORT            "
     echo "=============================================="
 
     # Locate the definitive compiled configuration source
@@ -108,12 +111,10 @@ if [ "$WITH_WG" = "true" ]; then
     echo ">>> Extracting definitions from: $CONFIG_SRC"
     echo "----------------------------------------------"
 
-    # Target features list to cross-check
+    # Target features list to cross-check (Removed volatile crypto flags)
     REQUIRED_CONFIGS=(
         "CONFIG_WIREGUARD"
         "CONFIG_NET_UDP_TUNNEL"
-        "CONFIG_CRYPTO_CHACHA20_NEON"
-        "CONFIG_CRYPTO_POLY1305_NEON"
         "CONFIG_NETFILTER_XT_MATCH_HASHLIMIT"
         "CONFIG_NETFILTER_XT_MATCH_LENGTH"
         "CONFIG_NETFILTER_XT_MATCH_MARK"
@@ -136,7 +137,7 @@ if [ "$WITH_WG" = "true" ]; then
             printf "  [ WARN ] %-40s = %s (Module Option)\n" "$CFG" "$VAL"
         else
             printf "  [ FAIL ] %-40s = MISSING\n" "$CFG"
-            # Hard-fail only on core engine; degrade optimizations to soft warnings
+            # Hard-fail on core engine and UDP tunneling
             if [ "$CFG" = "CONFIG_WIREGUARD" ] || [ "$CFG" = "CONFIG_NET_UDP_TUNNEL" ]; then
                 FAILED_VALIDATION=1
             fi

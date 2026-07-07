@@ -28,12 +28,12 @@ on:
         default: true
         
       target_version:
-        description: "Target Kernel Version (e.g., 6.1.145)"
+        description: "Kernel Version (e.g., 6.1.145)"
         required: true
         type: string
         
       ota_url:
-        description: "Full OTA ZIP URL (with payload.bin in zip root)"
+        description: "Full OTA ZIP URL (blank produces AK3 zip)"
         required: false
         default: ""
         type: string
@@ -79,14 +79,14 @@ jobs:
           docker-images: false
           swap-storage: false
 
-      - name: Create Manual 12GB Swap File
+      - name: Create Manual 16GB Swap File
         run: |
           echo "=== Freeing up any existing partial swap ==="
           sudo swapoff -a
           if [ -f /swapfile ]; then sudo rm -f /swapfile; fi
         
-          echo "=== Allocating 12GB Swap ==="
-          sudo fallocate -l 12G /swapfile
+          echo "=== Allocating 16GB Swap ==="
+          sudo fallocate -l 16G /swapfile
           sudo chmod 600 /swapfile
           sudo mkswap /swapfile
           sudo swapon /swapfile
@@ -184,8 +184,9 @@ jobs:
           bash ./scripts/inject_ksu_variant.sh "${{ inputs.root_manager }}"
 
       - name: Calculate Dynamic SuSFS Branch
+        if: inputs.enable_ksu_susfs == true
         run: |
-          # Grabs the manifest branch from your workflow inputs/env
+          # Obtains the manifest branch from your workflow inputs/env
           MANIFEST="${{ env.MANIFEST_BRANCH }}" 
           
           if [[ -n "$MANIFEST" ]]; then
@@ -311,6 +312,7 @@ jobs:
           ls -lah out/final/
 
       - name: Fetch Matching Manager APK
+        if: inputs.enable_ksu_susfs == true
         id: fetch_manager
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -375,9 +377,9 @@ jobs:
           if-no-files-found: error
 
       - name: Upload Manager APK
+        if: inputs.enable_ksu_susfs == true
         uses: actions/upload-artifact@v4
         with:
-          # This dynamically names the zip based on the variant they chose (e.g., ReSukiSU-Manager)
           name: ${{ github.event.inputs.root_manager }}-Manager
           path: manager_apk/*.apk
           if-no-files-found: error
